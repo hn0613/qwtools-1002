@@ -499,8 +499,8 @@ function open_load_definition(click_event) {
   var window_args = [
     'titlebar=no',
     'location=no',
-    'height=320',
-    'width=370',
+    'height=420',
+    'width=440',
     'top=' + click_event.clientY,
     'left=' + (click_event.clientX + 520),
     'scrollbars=yes',

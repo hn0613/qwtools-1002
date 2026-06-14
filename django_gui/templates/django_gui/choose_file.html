@@ -10,64 +10,111 @@
 {% if target_file %}
   {# ############################################################ #}
   {# If we have a target file, ask them to confirm loading it.    #}
-  <form id="file_submission_form" method="post" enctype="multipart/form-data">
-    {% csrf_token %}
-    <h3>Load definition file "{{ target_file }}"?</h3>
-    <button
-      id="load-target"
-      class="logger_button btn-primary"
-      style="margin-top: 0.5rem;"
-      type="submit"
-      name="target_file"
-      value="{{ target_file }}"
-    >
-      Load
-    </button>
-    <button
-      class="logger_button btn-secondary"
-      style="margin-top: 0.5rem;"
-      onclick="window.close();"
-    >
-      Cancel
-    </button>
-  </form>
-  
+  <div class="chooser-section">
+    <form id="file_submission_form" method="post" enctype="multipart/form-data">
+      {% csrf_token %}
+      <h3>Load this definition?</h3>
+      <div class="chooser-confirm-path">{{ target_file }}</div>
+      {% if file_size_display %}
+        <div class="chooser-file-meta">Size: {{ file_size_display }}</div>
+      {% endif %}
+      <div class="chooser-actions">
+        <button
+          id="load-target"
+          class="logger_button btn-primary"
+          type="submit"
+          name="target_file"
+          value="{{ target_file }}"
+        >
+          Load
+        </button>
+        <button
+          class="logger_button btn-secondary"
+          type="button"
+          onclick="window.close();"
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
+  </div>
+
 {% else %}
   {# ############################################################ #}
   {# Directory listing here...                                    #}
   <form id="directory_listing_form" method="post" enctype="multipart/form-data">
     {% csrf_token %}
+    <input type="hidden" name="dir_name" value="{{ dir_name }}">
+
     {# ############################################################ #}
-    {# Here, we're going to display the file listing and any errors #}
+    {# Error banner                                                 #}
     {% if load_errors %}
-      {% for error in load_errors %}
-        <div class='text-danger'>{{ error }}</div>
-      {% endfor %}
+      <div class="chooser-error-banner">
+        {% for error in load_errors %}
+          <div class="text-danger">{{ error }}</div>
+        {% endfor %}
+      </div>
     {% endif %}
 
-    <input type=hidden name="dir_name" value="{{ dir_name }}">
-    <h3>
-      {% if dir_name %}
-        {{ dir_name }}
-      {% else %}
-        Select definition from directory
-      {% endif %}
-    </h3>
-    <div id="directory_listing">
-      {% for selection, path in listing.items %}
-        <button
-          id="load-target"
-          class="btn-ghost text-primary"
-          type="submit"
-          name="select_file"
-          value="{{ path }}"
-        >
-          {{ selection }}
-        </button><br/>
+    {# ############################################################ #}
+    {# Breadcrumb navigation                                        #}
+    <nav class="chooser-breadcrumbs">
+      <button type="submit" name="select_file" value=""
+              class="chooser-breadcrumb">Root</button>
+      {% for crumb in breadcrumbs %}
+        <span class="chooser-breadcrumb-sep">/</span>
+        {% if not forloop.last %}
+          <button type="submit" name="select_file" value="{{ crumb.path }}"
+                  class="chooser-breadcrumb">{{ crumb.label }}</button>
+        {% else %}
+          <span class="chooser-breadcrumb-current">{{ crumb.label }}</span>
+        {% endif %}
       {% endfor %}
+    </nav>
+
+    {# ############################################################ #}
+    {# Search / filter input                                        #}
+    <div class="chooser-search">
+      <input type="text" id="chooser-filter"
+             placeholder="Filter files..." autocomplete="off">
     </div>
-    <button class="logger_button btn-secondary" onclick="window.close();">Close</button>
+
+    {# ############################################################ #}
+    {# Directory listing                                            #}
+    <div id="directory_listing">
+      {% if dir_error %}
+        <div class="chooser-empty text-danger">{{ dir_error }}</div>
+      {% elif empty_dir %}
+        <div class="chooser-empty">No YAML files in this directory</div>
+      {% else %}
+        {% for item in listing %}
+          <button
+            class="chooser-item {% if item.is_back %}chooser-back{% elif item.is_dir %}chooser-dir{% else %}chooser-file{% endif %}"
+            type="submit"
+            name="select_file"
+            value="{{ item.abs_path }}"
+            data-name="{{ item.display_name|lower }}"
+          >
+            <span class="chooser-item-icon">{% if item.is_back %}↩{% elif item.is_dir %}📂{% else %}📄{% endif %}</span>
+            <span class="chooser-item-name">{{ item.display_name }}</span>
+            {% if item.size_display %}
+              <span class="chooser-item-meta">{{ item.size_display }}</span>
+            {% endif %}
+            {% if item.child_count is not None %}
+              <span class="chooser-item-meta">{{ item.child_count }} items</span>
+            {% endif %}
+          </button>
+        {% endfor %}
+      {% endif %}
+      <div id="chooser-no-results" class="chooser-empty" style="display:none;">
+        No matches
+      </div>
+    </div>
+
+    <button class="logger_button btn-secondary"
+            type="button" onclick="window.close();">Close</button>
   </form>
 {% endif %}
 
+<script src="{% static 'django_gui/choose_file.html.js' %}"></script>
 {% endblock %}

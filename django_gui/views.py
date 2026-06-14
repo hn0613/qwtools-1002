@@ -4,10 +4,11 @@ from django_gui.settings import FILECHOOSER_DIRS
 from django_gui.settings import WEBSOCKET_DATA_SERVER
 import json
 import logging
+import os
 
 from json import JSONDecodeError
 from os import listdir
-from os.path import dirname, isfile, isdir, abspath, relpath
+from os.path import dirname, isfile, isdir, abspath, relpath, getsize
 from yaml.scanner import ScannerError
 
 from django.shortcuts import render, redirect
@@ -231,6 +232,26 @@ def edit_config(request, logger_id):
 
 
 ################################################################################
+def _format_size(size_bytes):
+    """Format a file size in bytes to a human-readable string."""
+    if size_bytes < 1024:
+        return '%d B' % size_bytes
+    elif size_bytes < 1024 * 1024:
+        return '%.1f KB' % (size_bytes / 1024)
+    else:
+        return '%.1f MB' % (size_bytes / (1024 * 1024))
+
+
+def _is_within_allowed_dirs(path):
+    """Check whether a path falls under one of the FILECHOOSER_DIRS."""
+    real_path = os.path.realpath(path)
+    for d in FILECHOOSER_DIRS:
+        real_base = os.path.realpath(d)
+        if real_path == real_base or real_path.startswith(real_base + '/'):
+            return True
+    return False
+
+
 def choose_file(request, selection=None):
     """Render a chooser to pick and load a configuration file from the
     server side.
@@ -244,27 +265,94 @@ def choose_file(request, selection=None):
 
     ##################
     # Internal function to create listing from dirname
+    dir_error = None
+
     def get_dir_contents(dir_name):
-        # If at root, set empty selection, otherwise, allow to pop back up a level
-        contents = {'↩️': '' if abspath(dir_name) in FILECHOOSER_DIRS
-                    else abspath(dir_name + '/..')}
-        for filename in listdir(dir_name):
-            path = dir_name + '/' + filename
-            if isdir(path):
-                filename = '📂 ' + filename + '/'
-            elif filename.endswith(('.yaml', '.yml')):
-                # Include YAML files only
-                filename = '📄 ' + filename
-            else:
-                # Skip everything else
-                continue
-            contents[filename] = abspath(path)
-        return contents
+        nonlocal dir_error
+        back_path = '' if abspath(dir_name) in FILECHOOSER_DIRS \
+            else abspath(dir_name + '/..')
+        back_item = {
+            'display_name': '↩ ..',
+            'abs_path': back_path,
+            'is_dir': True,
+            'is_back': True,
+            'size_display': None,
+            'child_count': None,
+        }
+
+        dirs_list = []
+        files_list = []
+        try:
+            for filename in sorted(listdir(dir_name)):
+                path = dir_name + '/' + filename
+                if isdir(path):
+                    # Count yaml files + subdirs in this child directory
+                    try:
+                        child_count = sum(
+                            1 for f in listdir(path)
+                            if isdir(path + '/' + f)
+                            or f.endswith(('.yaml', '.yml'))
+                        )
+                    except OSError:
+                        child_count = None
+                    dirs_list.append({
+                        'display_name': filename + '/',
+                        'abs_path': abspath(path),
+                        'is_dir': True,
+                        'is_back': False,
+                        'size_display': None,
+                        'child_count': child_count,
+                    })
+                elif filename.endswith(('.yaml', '.yml')):
+                    try:
+                        size_display = _format_size(getsize(path))
+                    except OSError:
+                        size_display = None
+                    files_list.append({
+                        'display_name': filename,
+                        'abs_path': abspath(path),
+                        'is_dir': False,
+                        'is_back': False,
+                        'size_display': size_display,
+                        'child_count': None,
+                    })
+        except PermissionError:
+            dir_error = 'Permission denied: cannot read this directory'
+        except OSError as e:
+            dir_error = 'Error reading directory: %s' % str(e)
+
+        return [back_item] + dirs_list + files_list
+
+    ##################
+    # Build breadcrumbs from dir_name
+    def build_breadcrumbs(dir_name, current_abs_path):
+        breadcrumbs = []
+        if not dir_name:
+            return breadcrumbs
+        parts = dir_name.strip('./').split('/')
+        # Find which FILECHOOSER_DIR base we're under
+        base_dir = None
+        for base in FILECHOOSER_DIRS:
+            parent_dir = dirname(base)
+            if current_abs_path and current_abs_path.startswith(parent_dir):
+                base_dir = parent_dir
+                break
+        if base_dir is None:
+            return breadcrumbs
+        # Build cumulative paths
+        for i, part in enumerate(parts):
+            cumulative = base_dir + '/' + '/'.join(parts[:i + 1])
+            breadcrumbs.append({
+                'label': part,
+                'path': abspath(cumulative),
+            })
+        return breadcrumbs
 
     ##################
     # Start of choose_file() code
     target_file = None  # file we're going to load
     load_errors = []    # where we store any errors
+    file_size_display = None
 
     # If post, figure out what user selected
     if request.method == 'POST':
@@ -274,30 +362,39 @@ def choose_file(request, selection=None):
         # Was this a request to load the target file?
         target_file = request.POST.get('target_file')
         if target_file:
-            try:
-                # Load the file to memory and parse to a dict. Add the name of
-                # the file we've just loaded to the dict.
-                config = read_config(target_file)
-                config = expand_cruise_definition(config)
+            # Validate path is within allowed directories
+            if not _is_within_allowed_dirs(target_file):
+                load_errors.append('File is outside allowed directories')
+                target_file = None
+            else:
+                try:
+                    # Load the file to memory and parse to a dict. Add the
+                    # name of the file we've just loaded to the dict.
+                    config = read_config(target_file)
+                    config = expand_cruise_definition(config)
 
-                if 'cruise' in config:
-                    config['cruise']['config_filename'] = target_file
+                    if 'cruise' in config:
+                        config['cruise']['config_filename'] = target_file
 
-                # Load the config and set to the default mode
-                api.load_configuration(config)
-                default_mode = api.get_default_mode()
-                if default_mode:
-                    api.set_active_mode(default_mode)
-            except (JSONDecodeError, ScannerError) as e:
-                load_errors.append('Error loading "%s": %s' % (target_file, str(e)))
-            except ValueError as e:
-                load_errors.append(str(e))
+                    # Load the config and set to the default mode
+                    api.load_configuration(config)
+                    default_mode = api.get_default_mode()
+                    if default_mode:
+                        api.set_active_mode(default_mode)
+                except FileNotFoundError:
+                    load_errors.append('File not found: "%s"' % target_file)
+                except (JSONDecodeError, ScannerError) as e:
+                    load_errors.append(
+                        'Error loading "%s": %s' % (target_file, str(e)))
+                except ValueError as e:
+                    load_errors.append(str(e))
 
             # If no errors, go home; otherwise reset back to previous page
             if not load_errors:
                 return HttpResponse('<script>window.close()</script>')
             else:
-                logging.warning('Errors loading cruise definition: %s', load_errors)
+                logging.warning('Errors loading cruise definition: %s',
+                                load_errors)
                 target_file = None
 
         # Okay, it wasn't a request to load a target file. Do we have a
@@ -305,6 +402,13 @@ def choose_file(request, selection=None):
         # the choice.
         elif selection is None or selection[0] is None:
             return HttpResponse('<script>window.close()</script>')
+
+        # Validate navigation target is within allowed directories
+        if selection and selection[0] and selection[0] != '' \
+                and not _is_within_allowed_dirs(selection[0]):
+            load_errors.append('Path is outside allowed directories')
+            selection = FILECHOOSER_DIRS
+            dir_name = ''
 
     # If we don't have a selection, use the complete listing from our settings.
     if not selection or selection == ['']:
@@ -316,12 +420,17 @@ def choose_file(request, selection=None):
     # display it: if a single element and a directory, expand the
     # directory. If single element and a file, it's our target file. If
     # multiple elements, just display list of elements.
+    current_abs_path = None
     if len(selection) == 1:
         # If it's a file, designate it as the target_file; we won't bother
         # with a listing.
         if isfile(selection[0]):
             target_file = selection[0]
             listing = []
+            try:
+                file_size_display = _format_size(getsize(target_file))
+            except OSError:
+                file_size_display = None
 
         # If it's a directory, fetch/expand its contents into the listing
         else:
@@ -330,7 +439,7 @@ def choose_file(request, selection=None):
                 if selection[0].startswith(parent_dir):
                     dir_name = './' + relpath(selection[0], parent_dir)
                     break
-            # dir_name = selection[0]
+            current_abs_path = abspath(selection[0])
             listing = get_dir_contents(selection[0])
 
     # If here, 'selection' is a list of files/dirs; use them as our listing
@@ -340,14 +449,34 @@ def choose_file(request, selection=None):
         if set(selection).intersection(FILECHOOSER_DIRS):
             dir_name = ''
             selection = FILECHOOSER_DIRS
-        listing = {'📂 ' + f.split('/')[-1] + '/': f for f in selection}
+        listing = [{
+            'display_name': f.split('/')[-1] + '/',
+            'abs_path': f,
+            'is_dir': True,
+            'is_back': False,
+            'size_display': None,
+            'child_count': None,
+        } for f in selection]
+
+    # Determine empty_dir status (only back button, no real entries)
+    empty_dir = (isinstance(listing, list)
+                 and len(listing) <= 1
+                 and all(item.get('is_back') for item in listing)
+                 and not dir_error)
+
+    # Build breadcrumbs
+    breadcrumbs = build_breadcrumbs(dir_name, current_abs_path)
 
     # Render the page
     return render(request, 'django_gui/choose_file.html',
                   {'target_file': target_file,
                    'dir_name': dir_name,
                    'listing': listing,
-                   'load_errors': load_errors})
+                   'load_errors': load_errors,
+                   'breadcrumbs': breadcrumbs,
+                   'empty_dir': empty_dir,
+                   'dir_error': dir_error,
+                   'file_size_display': file_size_display})
 
 
 ################################################################################
