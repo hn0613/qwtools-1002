@@ -1,84 +1,45 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import YAML from 'yaml';
 import './index.css';
 import { CopyToClipboard } from 'react-copy-to-clipboard';
 
-export default function YAMLOutput(props) {
-  const divStyle = {
-    display: 'flex',
-    alignItems: 'center',
-  };
+/**
+ * JSONYAMLOutput — preview panel showing the generated JSON and YAML.
+ *
+ * Props:
+ *   config: { readers: [...], transforms: [...], writers: [...] }
+ *           Already in output format (no internal id or kwargClass fields).
+ */
+export default function JSONYAMLOutput({ config }) {
+  const jsonStr = useMemo(() => JSON.stringify(config, null, 2), [config]);
+  const yamlStr = useMemo(() => YAML.stringify(config), [config]);
 
-  const combined = {
-    readers: props.readers.map((element) => element),
-    transforms: props.transforms.map((element) => element),
-    writers: props.writers.map((element) => element),
-  };
+  const divStyle = { display: 'flex', alignItems: 'center' };
 
   return (
-    <div>
-      <div className='container p-3 my-3 bg-light text-white border'>
-        <div className='row'>
-          <div className='text-left col-10'>
-            <pre style={divStyle}>
-              {JSON.stringify(
-                combined,
-                function (key, val) {
-                  if (key !== 'kwargClass') return val;
-                },
-                2
-              )}
+    <div data-testid="json-yaml-output">
+      <div className="container p-3 my-3 bg-light text-white border">
+        <div className="row">
+          <div className="text-left col-10">
+            <pre style={divStyle} data-testid="json-preview">
+              {jsonStr}
             </pre>
           </div>
-          <div className='col-2'>
-            <CopyToClipboard
-              className='copyButton'
-              text={JSON.stringify(
-                combined,
-                function (key, val) {
-                  if (key !== 'kwargClass') return val;
-                },
-                2
-              )}
-            >
-              <button>Copy JSON</button>
+          <div className="col-2">
+            <CopyToClipboard className="copyButton" text={jsonStr}>
+              <button data-testid="copy-json-button">Copy JSON</button>
             </CopyToClipboard>
           </div>
         </div>
       </div>
-      <div className='container p-3 my-3 bg-light text-white border'>
-        <div className='row'>
-          <div className='text-left col-10'>
-            <pre>
-              {YAML.stringify(
-                JSON.parse(
-                  JSON.stringify(
-                    combined,
-                    function (key, val) {
-                      if (key !== 'kwargClass') return val;
-                    },
-                    2
-                  )
-                )
-              )}
-            </pre>
+      <div className="container p-3 my-3 bg-light text-white border">
+        <div className="row">
+          <div className="text-left col-10">
+            <pre data-testid="yaml-preview">{yamlStr}</pre>
           </div>
-          <div className='col-2'>
-            <CopyToClipboard
-              className='copyButton'
-              text={YAML.stringify(
-                JSON.parse(
-                  JSON.stringify(
-                    combined,
-                    function (key, val) {
-                      if (key !== 'kwargClass') return val;
-                    },
-                    2
-                  )
-                )
-              )}
-            >
-              <button>Copy YAML</button>
+          <div className="col-2">
+            <CopyToClipboard className="copyButton" text={yamlStr}>
+              <button data-testid="copy-yaml-button">Copy YAML</button>
             </CopyToClipboard>
           </div>
         </div>
