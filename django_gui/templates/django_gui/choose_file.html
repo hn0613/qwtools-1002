@@ -4,70 +4,147 @@
 
 {% block content %}
 
+<link rel="stylesheet" href="{% static 'django_gui/choose_file.css' %}">
+
 <title>Choose Cruise Definition File</title>
 <h1>Choose Cruise Definition File</h1>
 
 {% if target_file %}
   {# ############################################################ #}
-  {# If we have a target file, ask them to confirm loading it.    #}
+  {# Confirmation: ask the user to confirm loading the target file #}
   <form id="file_submission_form" method="post" enctype="multipart/form-data">
     {% csrf_token %}
-    <h3>Load definition file "{{ target_file }}"?</h3>
-    <button
-      id="load-target"
-      class="logger_button btn-primary"
-      style="margin-top: 0.5rem;"
-      type="submit"
-      name="target_file"
-      value="{{ target_file }}"
-    >
-      Load
-    </button>
-    <button
-      class="logger_button btn-secondary"
-      style="margin-top: 0.5rem;"
-      onclick="window.close();"
-    >
-      Cancel
-    </button>
+    <div class="cf-confirm">
+      <div class="cf-confirm-icon">&#128196;</div>
+      <div class="cf-confirm-label">Load definition file?</div>
+      <div class="cf-confirm-path">{{ target_display|default:target_file }}</div>
+      <div class="cf-confirm-actions">
+        <button
+          id="load-target"
+          class="logger_button btn-success"
+          type="submit"
+          name="target_file"
+          value="{{ target_file }}"
+        >
+          Load
+        </button>
+        <button
+          class="logger_button btn-secondary"
+          type="button"
+          onclick="window.close();"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
   </form>
-  
+
 {% else %}
   {# ############################################################ #}
-  {# Directory listing here...                                    #}
+  {# Directory listing view                                        #}
   <form id="directory_listing_form" method="post" enctype="multipart/form-data">
     {% csrf_token %}
-    {# ############################################################ #}
-    {# Here, we're going to display the file listing and any errors #}
+
+    {# --- Error messages --- #}
     {% if load_errors %}
-      {% for error in load_errors %}
-        <div class='text-danger'>{{ error }}</div>
-      {% endfor %}
+      <div class="cf-errors">
+        {% for error in load_errors %}
+          <div class="cf-error text-danger">{{ error }}</div>
+        {% endfor %}
+      </div>
     {% endif %}
 
     <input type=hidden name="dir_name" value="{{ dir_name }}">
-    <h3>
-      {% if dir_name %}
-        {{ dir_name }}
-      {% else %}
-        Select definition from directory
-      {% endif %}
-    </h3>
-    <div id="directory_listing">
-      {% for selection, path in listing.items %}
-        <button
-          id="load-target"
-          class="btn-ghost text-primary"
-          type="submit"
-          name="select_file"
-          value="{{ path }}"
-        >
-          {{ selection }}
-        </button><br/>
+
+    {# --- Breadcrumb trail --- #}
+    {% if breadcrumbs %}
+      <nav class="cf-breadcrumbs">
+        {% for crumb in breadcrumbs %}
+          {% if not forloop.first %}<span class="cf-bc-sep">/</span>{% endif %}
+          {% if crumb.active %}
+            <span class="cf-bc-active">{{ crumb.name }}</span>
+          {% else %}
+            <button
+              class="cf-bc-link"
+              type="submit"
+              name="select_file"
+              value="{{ crumb.path }}"
+            >{{ crumb.name }}</button>
+          {% endif %}
+        {% endfor %}
+      </nav>
+    {% endif %}
+
+    {# --- Back button (hidden at root level) --- #}
+    {% if breadcrumbs and not breadcrumbs.0.active %}
+      {% for key, item in listing.items %}
+        {% if item.type == 'back' %}
+          <button
+            class="cf-back-btn"
+            type="submit"
+            name="select_file"
+            value="{{ item.path }}"
+          >{{ item.name }}</button>
+        {% endif %}
       {% endfor %}
+    {% endif %}
+
+    {# --- Search / filter input (shown when there are enough items) --- #}
+    {% if listing|length >= 5 %}
+      <div class="cf-search">
+        <input
+          type="text"
+          id="file-filter"
+          placeholder="Filter by name..."
+          autocomplete="off"
+        >
+        <span id="filter-count" class="cf-filter-info"></span>
+      </div>
+    {% endif %}
+
+    {# --- Directory listing items --- #}
+    <div id="directory_listing" class="cf-listing">
+      {% if empty_directory %}
+        <div class="cf-empty">This directory is empty (no YAML files or subdirectories).</div>
+      {% else %}
+        {% for key, item in listing.items %}
+          {% if item.type == 'error' %}
+            <div class="cf-error text-danger">{{ item.name }}</div>
+          {% elif item.type == 'back' %}
+            {# back button is rendered separately above #}
+          {% elif item.type == 'dir' %}
+            <button
+              class="listing-item listing-item--dir"
+              type="submit"
+              name="select_file"
+              value="{{ item.path }}"
+              data-name="{{ item.name }}"
+              data-type="dir"
+            >
+              <span class="listing-icon">&#128193;</span>
+              <span class="listing-name">{{ item.name }}</span>
+            </button>
+          {% elif item.type == 'yaml' %}
+            <button
+              class="listing-item listing-item--file"
+              type="submit"
+              name="select_file"
+              value="{{ item.path }}"
+              data-name="{{ item.name }}"
+              data-type="yaml"
+            >
+              <span class="listing-icon">&#128196;</span>
+              <span class="listing-name">{{ item.name }}</span>
+            </button>
+          {% endif %}
+        {% endfor %}
+      {% endif %}
     </div>
-    <button class="logger_button btn-secondary" onclick="window.close();">Close</button>
+
+    <button class="logger_button btn-secondary" style="margin-top: 0.5rem;" onclick="window.close();">Close</button>
   </form>
+
+  <script src="{% static 'django_gui/choose_file.html.js' %}"></script>
 {% endif %}
 
 {% endblock %}
