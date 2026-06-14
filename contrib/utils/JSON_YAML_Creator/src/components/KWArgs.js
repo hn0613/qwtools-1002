@@ -23,12 +23,12 @@ export default function KWArgs(props) {
       <div className='form-group' id='reader' style={divStyle}>
         <Dropdown>
           <Dropdown.Toggle variant='success' id='dropdown-basic'>
-            {kwargs.length > 0 ? kwargs : 'Please Select a Reader'}
+            {kwargs.length > 0 ? kwargs : 'Please Select a Parameter'}
           </Dropdown.Toggle>
 
           <Dropdown.Menu>
             {props.items.map((item) => (
-              <Dropdown.Item onClick={kwargsChange}>{item}</Dropdown.Item>
+              <Dropdown.Item key={item} onClick={kwargsChange}>{item}</Dropdown.Item>
             ))}
           </Dropdown.Menu>
         </Dropdown>

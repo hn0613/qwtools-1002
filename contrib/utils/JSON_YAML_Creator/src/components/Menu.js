@@ -4,152 +4,170 @@ import './index.css';
 import { Dropdown, Button } from 'react-bootstrap';
 import JSONYAMLOutput from './JSONYAMLOutput';
 import KWArgs from './KWArgs';
+import { readers, transforms, writers } from '../constants/componentCatalog';
+
+/**
+ * Look up the Python class name for a given dropdown label.
+ * Falls back to stripping whitespace if no catalog match is found.
+ */
+function getClassName(catalog, label) {
+  const entry = catalog.find((e) => e.label === label);
+  return entry ? entry.className : label.replace(/\s/g, '');
+}
+
+/**
+ * Look up the parameter list for a given Python class name.
+ */
+function getParams(catalog, className) {
+  const entry = catalog.find((e) => e.className === className);
+  return entry ? entry.params : [];
+}
 
 function YAML() {
-  // Chosen reader in the main dropdown menu
+  // Currently selected label in each dropdown
   const [reader, setReader] = useState('');
-
-  // Chosen transform in the main dropdown menu
   const [transform, setTransform] = useState('');
-
-  // Chosen writer in the main dropdown menu
   const [writer, setWriter] = useState('');
 
-  // Array of readers
+  // Arrays of added components: [{ class: 'ClassName', kwargs: [...] }, ...]
   const [allReaders, setAllReaders] = useState([]);
-  // Array of transforms
   const [allTransforms, setAllTransforms] = useState([]);
-  // Array of writers
   const [allWriters, setAllWriters] = useState([]);
 
-  // Reader KWargs
+  // Kwarg tracking arrays (used for re-render triggers)
   const [allReaderKwargs, setReaderAllKwargs] = useState([]);
   const [allTransformKwargs, setTransformAllKwargs] = useState([]);
   const [allWriterKwargs, setWriterAllKwargs] = useState([]);
 
-  // Triggers when a kwarg is added for any reader
+  // ─── Callbacks for adding kwargs ──────────────────────────────────────────
+
   const readerKwargCallback = (val) => {
-    let obj = allReaders.find((o) => o.class === reader.replace(/\s/g, ''));
-    let kw = {};
+    const className = val[0];
+    const obj = allReaders.find((o) => o.class === className);
+    if (!obj) return;
+    const kw = {};
     kw[val[1]] = val[2];
-    kw.kwargClass = val[0];
-    const arrayCopy = allReaderKwargs.filter((ob) => ob.kwargClass === val[0]);
+    kw.kwargClass = className;
+    const arrayCopy = allReaderKwargs.filter((ob) => ob.kwargClass === className);
     arrayCopy.push(kw);
     obj.kwargs = arrayCopy;
-    setReaderAllKwargs(arrayCopy);
+    setReaderAllKwargs([...arrayCopy]);
   };
 
-  // Triggers when a kwarg is added for any transform
   const transformKwargCallback = (val) => {
-    let obj = allTransforms.find(
-      (o) => o.class === transform.replace(/\s/g, '')
-    );
-    let kw = {};
+    const className = val[0];
+    const obj = allTransforms.find((o) => o.class === className);
+    if (!obj) return;
+    const kw = {};
     kw[val[1]] = val[2];
-    kw.kwargClass = val[0];
-    const arrayCopy = allTransformKwargs.filter(
-      (ob) => ob.kwargClass === val[0]
-    );
+    kw.kwargClass = className;
+    const arrayCopy = allTransformKwargs.filter((ob) => ob.kwargClass === className);
     arrayCopy.push(kw);
     obj.kwargs = arrayCopy;
-    setTransformAllKwargs(arrayCopy);
+    setTransformAllKwargs([...arrayCopy]);
   };
 
-  // Triggers when a kwarg is added for any writer EXCEPT Composed Writer
   const writerKwargCallback = (val) => {
-    let obj = allWriters.find((o) => o.class === writer.replace(/\s/g, ''));
-    let kw = {};
+    const className = val[0];
+    const obj = allWriters.find((o) => o.class === className);
+    if (!obj) return;
+    const kw = {};
     kw[val[1]] = val[2];
-    kw.kwargClass = val[0];
-    const arrayCopy = allWriterKwargs.filter((ob) => ob.kwargClass === val[0]);
+    kw.kwargClass = className;
+    const arrayCopy = allWriterKwargs.filter((ob) => ob.kwargClass === className);
     arrayCopy.push(kw);
     obj.kwargs = arrayCopy;
-    setWriterAllKwargs(arrayCopy);
+    setWriterAllKwargs([...arrayCopy]);
   };
 
-  const readerChange = (e) => {
-    setReader(e.target.innerHTML);
+  // ─── Dropdown change handlers ─────────────────────────────────────────────
+
+  const readerChange = (e) => setReader(e.target.innerHTML);
+  const transformChange = (e) => setTransform(e.target.innerHTML);
+  const writerChange = (e) => setWriter(e.target.innerHTML);
+
+  // ─── Add button handlers ──────────────────────────────────────────────────
+
+  const handleClickReader = () => {
+    if (!reader) return;
+    const className = getClassName(readers, reader);
+    setAllReaders((arr) => [...arr, { class: className, kwargs: [] }]);
   };
 
-  const transformChange = (e) => {
-    setTransform(e.target.innerHTML);
+  const handleClickTransform = () => {
+    if (!transform) return;
+    const className = getClassName(transforms, transform);
+    setAllTransforms((arr) => [...arr, { class: className, kwargs: [] }]);
   };
 
-  const writerChange = (e) => {
-    setWriter(e.target.innerHTML);
+  const handleClickWriter = () => {
+    if (!writer) return;
+    const className = getClassName(writers, writer);
+    setAllWriters((arr) => [...arr, { class: className, kwargs: [] }]);
   };
 
-  const generateJSONXML = async (e) => {
-    e.preventDefault();
+  // ─── Helper: render a dropdown section ────────────────────────────────────
+
+  const renderDropdown = (catalog, selectedLabel, changeHandler, placeholder) => (
+    <Dropdown>
+      <Dropdown.Toggle variant='success' id='dropdown-basic'>
+        {selectedLabel || placeholder}
+      </Dropdown.Toggle>
+      <Dropdown.Menu>
+        {catalog.map((entry) => (
+          <Dropdown.Item
+            href={`#/${entry.className}`}
+            onClick={changeHandler}
+            key={entry.className}
+          >
+            {entry.label}
+          </Dropdown.Item>
+        ))}
+      </Dropdown.Menu>
+    </Dropdown>
+  );
+
+  // ─── Helper: render KWArgs panel for a selected component ─────────────────
+
+  const renderKwargsPanel = (
+    catalog,
+    addedItems,
+    selectedLabel,
+    callback,
+    categoryKwargs,
+  ) => {
+    const className = getClassName(catalog, selectedLabel);
+    const params = getParams(catalog, className);
+    const isSelected = !!selectedLabel;
+    const isAdded = addedItems.some((e) => e.class === className);
+
+    if (!isSelected || !isAdded) return null;
+
+    return (
+      <KWArgs
+        kwargCallback={callback}
+        items={params}
+        kwClass={className}
+      />
+    );
   };
 
-  const handleClickReader = (e) => {
-    let r = { class: reader.replace(/\s/g, '') };
-    setAllReaders((arr) => [...arr, r]);
-  };
-  const handleClickTransform = (e) => {
-    let r = { class: transform.replace(/\s/g, '') };
-    setAllTransforms((arr) => [...arr, r]);
-  };
-  const handleClickWriter = (e) => {
-    let r = { class: writer.replace(/\s/g, '') };
-    setAllWriters((arr) => [...arr, r]);
-  };
+  // Suppress unused form submit — the Add buttons handle component creation
+  const generateJSONXML = (e) => e.preventDefault();
 
-  const divStyle = {
-    display: 'flex',
-    alignItems: 'center',
-  };
+  const divStyle = { display: 'flex', alignItems: 'center' };
+
   return (
     <div className='blue-container p-3 my-3 text-white border'>
       <div className='blue-container-text'>
-        <form onSubmit={(e) => generateJSONXML(e)}>
+        <form onSubmit={generateJSONXML}>
           <div className='container'>
             <div className='row'>
               <div className='col-sm'>
+                {/* ─── Readers Section ──────────────────────────────── */}
                 <h1 style={divStyle}>Readers</h1>
                 <div className='form-group' id='reader' style={divStyle}>
-                  <Dropdown>
-                    <Dropdown.Toggle variant='success' id='dropdown-basic'>
-                      {reader.length > 0 ? reader : 'Please Select a Reader'}
-                    </Dropdown.Toggle>
-
-                    <Dropdown.Menu>
-                      <Dropdown.Item href='#/action-1' onClick={readerChange}>
-                        Cached Data Reader
-                      </Dropdown.Item>
-                      <Dropdown.Item href='#/action-2' onClick={readerChange}>
-                        Composed Reader
-                      </Dropdown.Item>
-                      <Dropdown.Item href='#/action-3' onClick={readerChange}>
-                        Database Reader
-                      </Dropdown.Item>
-                      <Dropdown.Item href='#/action-4' onClick={readerChange}>
-                        Logfile Reader
-                      </Dropdown.Item>
-                      <Dropdown.Item href='#/action-5' onClick={readerChange}>
-                        MQTT Reader
-                      </Dropdown.Item>
-                      <Dropdown.Item href='#/action-6' onClick={readerChange}>
-                        Network Reader
-                      </Dropdown.Item>
-                      <Dropdown.Item href='#/action-7' onClick={readerChange}>
-                        Polled Serial Reader
-                      </Dropdown.Item>
-                      <Dropdown.Item href='#/action-8' onClick={readerChange}>
-                        Redis Reader
-                      </Dropdown.Item>
-                      <Dropdown.Item href='#/action-9' onClick={readerChange}>
-                        Serial Reader
-                      </Dropdown.Item>
-                      <Dropdown.Item href='#/action-10' onClick={readerChange}>
-                        Timeout Reader
-                      </Dropdown.Item>
-                      <Dropdown.Item href='#/action-11' onClick={readerChange}>
-                        UDP Reader
-                      </Dropdown.Item>
-                    </Dropdown.Menu>
-                  </Dropdown>
+                  {renderDropdown(readers, reader, readerChange, 'Please Select a Reader')}
                   <Button
                     className='addButton'
                     variant='outline-primary'
@@ -158,247 +176,14 @@ function YAML() {
                     Add
                   </Button>{' '}
                 </div>
-                {allReaders.some((e) => e.class === 'CachedDataReader') &&
-                reader === 'Cached Data Reader' ? (
-                  <KWArgs
-                    kwargCallback={readerKwargCallback}
-                    items={['data_server', 'subscription']}
-                    kwClass={'CachedDataReader'}
-                  />
-                ) : (
-                  console.log(allReaders)
+                {renderKwargsPanel(
+                  readers, allReaders, reader, readerKwargCallback, allReaderKwargs,
                 )}
-                {allReaders.some((e) => e.class === 'LogfileReader') &&
-                reader === 'Logfile Reader' ? (
-                  <KWArgs
-                    kwargCallback={readerKwargCallback}
-                    items={[
-                      'filebase',
-                      'tail',
-                      'refresh_file_spec',
-                      'retry_interval',
-                      'interval',
-                    ]}
-                    kwClass={'LogfileReader'}
-                  />
-                ) : (
-                  console.log(allReaders)
-                )}
-                {allReaders.some((e) => e.class === 'MQTTReader') &&
-                reader === 'MQTT Reader' ? (
-                  <KWArgs
-                    kwargCallback={readerKwargCallback}
-                    items={['channel']}
-                    kwClass={'MQTTReader'}
-                  />
-                ) : (
-                  console.log(reader)
-                )}
-                {allReaders.some((e) => e.class === 'ComposedReader') &&
-                reader === 'Composed Reader' ? (
-                  <KWArgs
-                    kwargCallback={readerKwargCallback}
-                    items={['reader', 'readers', 'transforms', 'check_format']}
-                    kwClass={'ComposedReader'}
-                  />
-                ) : (
-                  console.log(reader)
-                )}
-                {allReaders.some((e) => e.class === 'PolledSerialReader') &&
-                reader === 'Polled Serial Reader' ? (
-                  <KWArgs
-                    kwargCallback={readerKwargCallback}
-                    items={['hello', 'works']}
-                    kwclass={'PolledSerialReader'}
-                  />
-                ) : (
-                  console.log(reader)
-                )}
-                {allReaders.some((e) => e.class === 'RedisReader') &&
-                reader === 'Redis Reader' ? (
-                  <KWArgs
-                    kwargCallback={readerKwargCallback}
-                    items={['channel']}
-                    kwClass={'RedisReader'}
-                  />
-                ) : (
-                  console.log(reader)
-                )}
-                {allReaders.some((e) => e.class === 'SerialReader') &&
-                reader === 'Serial Reader' ? (
-                  <KWArgs
-                    kwargCallback={readerKwargCallback}
-                    items={['baudrate', 'port', 'eol']}
-                    kwClass={'SerialReader'}
-                  />
-                ) : (
-                  console.log(reader)
-                )}
-                {allReaders.some((e) => e.class === 'TimeoutReader') &&
-                reader === 'Timeout Reader' ? (
-                  <KWArgs
-                    kwargCallback={readerKwargCallback}
-                    items={[
-                      'reader',
-                      'timeout',
-                      'message',
-                      'resume_message',
-                      'empty_is_okay',
-                      'none_is_okay',
-                    ]}
-                    kwClass={'TimeoutReader'}
-                  />
-                ) : (
-                  console.log(reader)
-                )}
-                {allReaders.some((e) => e.class === 'UDPReader') &&
-                reader === 'UDP Reader' ? (
-                  <KWArgs
-                    kwargCallback={readerKwargCallback}
-                    items={['port', 'source', 'eol']}
-                    kwClass={'UDPReader'}
-                  />
-                ) : (
-                  console.log(reader)
-                )}
+
+                {/* ─── Transforms Section ───────────────────────────── */}
                 <h1 style={divStyle}>Transforms</h1>
                 <div className='form-group' style={divStyle}>
-                  <Dropdown>
-                    <Dropdown.Toggle variant='success' id='dropdown-basic'>
-                      {transform.length > 0
-                        ? transform
-                        : 'Please Select a Transform'}
-                    </Dropdown.Toggle>
-
-                    <Dropdown.Menu>
-                      <Dropdown.Item
-                        href='#/action-1'
-                        onClick={transformChange}
-                      >
-                        Count Transform
-                      </Dropdown.Item>
-                      <Dropdown.Item
-                        href='#/action-2'
-                        onClick={transformChange}
-                      >
-                        Derived Data Transform
-                      </Dropdown.Item>
-                      <Dropdown.Item
-                        href='#/action-3'
-                        onClick={transformChange}
-                      >
-                        Extract Field Transform
-                      </Dropdown.Item>
-                      <Dropdown.Item
-                        href='#/action-4'
-                        onClick={transformChange}
-                      >
-                        Format Transform
-                      </Dropdown.Item>
-                      <Dropdown.Item
-                        href='#/action-5'
-                        onClick={transformChange}
-                      >
-                        From Json Transform
-                      </Dropdown.Item>
-                      <Dropdown.Item
-                        href='#/action-6'
-                        onClick={transformChange}
-                      >
-                        Interpolation Transform
-                      </Dropdown.Item>
-                      <Dropdown.Item
-                        href='#/action-7'
-                        onClick={transformChange}
-                      >
-                        MaxMin Transform
-                      </Dropdown.Item>
-                      <Dropdown.Item
-                        href='#/action-8'
-                        onClick={transformChange}
-                      >
-                        NMEA Transform
-                      </Dropdown.Item>
-                      <Dropdown.Item
-                        href='#/action-9'
-                        onClick={transformChange}
-                      >
-                        Parse NMEA Transform
-                      </Dropdown.Item>
-                      <Dropdown.Item
-                        href='#/action-10'
-                        onClick={transformChange}
-                      >
-                        Parse Transform
-                      </Dropdown.Item>
-                      <Dropdown.Item
-                        href='#/action-11'
-                        onClick={transformChange}
-                      >
-                        Prefix Transform
-                      </Dropdown.Item>
-                      <Dropdown.Item
-                        href='#/action-12'
-                        onClick={transformChange}
-                      >
-                        QC Filter Transform
-                      </Dropdown.Item>
-                      <Dropdown.Item
-                        href='#/action-13'
-                        onClick={transformChange}
-                      >
-                        Regex Filter Transform
-                      </Dropdown.Item>
-                      <Dropdown.Item
-                        href='#/action-14'
-                        onClick={transformChange}
-                      >
-                        Select Fields Transform
-                      </Dropdown.Item>
-                      <Dropdown.Item
-                        href='#/action-15'
-                        onClick={transformChange}
-                      >
-                        Slice Transform
-                      </Dropdown.Item>
-                      <Dropdown.Item
-                        href='#/action-16'
-                        onClick={transformChange}
-                      >
-                        Subsample Transform
-                      </Dropdown.Item>
-                      <Dropdown.Item
-                        href='#/action-17'
-                        onClick={transformChange}
-                      >
-                        Timestamp Transform
-                      </Dropdown.Item>
-                      <Dropdown.Item
-                        href='#/action-18'
-                        onClick={transformChange}
-                      >
-                        ToDASRecord Transform
-                      </Dropdown.Item>
-                      <Dropdown.Item
-                        href='#/action-19'
-                        onClick={transformChange}
-                      >
-                        ToJSON Transform
-                      </Dropdown.Item>
-                      <Dropdown.Item
-                        href='#/action-20'
-                        onClick={transformChange}
-                      >
-                        True Winds Transform
-                      </Dropdown.Item>
-                      <Dropdown.Item
-                        href='#/action-21'
-                        onClick={transformChange}
-                      >
-                        XMLAggregator Transform
-                      </Dropdown.Item>
-                    </Dropdown.Menu>
-                  </Dropdown>
+                  {renderDropdown(transforms, transform, transformChange, 'Please Select a Transform')}
                   <Button
                     className='addButton'
                     variant='outline-primary'
@@ -407,280 +192,14 @@ function YAML() {
                     Add
                   </Button>{' '}
                 </div>
-
-                {allTransforms.some(
-                  (e) => e.class === 'ExtractFieldTransform'
-                ) && transform === 'Extract Field Transform' ? (
-                  <KWArgs
-                    kwargCallback={transformKwargCallback}
-                    items={['field_name']}
-                    kwClass={'ExtractFieldTransform'}
-                  />
-                ) : (
-                  console.log(transform)
+                {renderKwargsPanel(
+                  transforms, allTransforms, transform, transformKwargCallback, allTransformKwargs,
                 )}
 
-                {allTransforms.some((e) => e.class === 'FormatTransform') &&
-                transform === 'Format Transform' ? (
-                  <KWArgs
-                    kwargCallback={transformKwargCallback}
-                    items={['format_str', 'defaults']}
-                    kwClass={'FormatTransform'}
-                  />
-                ) : (
-                  console.log(transform)
-                )}
-
-                {allTransforms.some((e) => e.class === 'FromJsonTransform') &&
-                transform === 'From Json Transform' ? (
-                  <KWArgs
-                    kwargCallback={transformKwargCallback}
-                    items={['das_record']}
-                    kwClass={'FromJsonTransform'}
-                  />
-                ) : (
-                  console.log(transform)
-                )}
-
-                {allTransforms.some(
-                  (e) => e.class === 'InterpolationTransform'
-                ) && transform === 'Interpolation Transform' ? (
-                  <KWArgs
-                    kwargCallback={transformKwargCallback}
-                    items={[
-                      'field_spec',
-                      'interval',
-                      'window',
-                      'metadata_interval',
-                    ]}
-                    kwClass={'InterpolationTransform'}
-                  />
-                ) : (
-                  console.log(transform)
-                )}
-
-                {allTransforms.some((e) => e.class === 'ParseNMEATransform') &&
-                transform === 'Parse NMEA Transform' ? (
-                  <KWArgs
-                    kwargCallback={transformKwargCallback}
-                    items={[
-                      'json',
-                      'message_path',
-                      'sensor_path',
-                      'sensor_model_path',
-                      'time_format',
-                    ]}
-                    kwClass={'ParseNMEATransform'}
-                  />
-                ) : (
-                  console.log(transform)
-                )}
-
-                {allTransforms.some((e) => e.class === 'ParseTransform') &&
-                transform === 'Parse Transform' ? (
-                  <KWArgs
-                    kwargCallback={transformKwargCallback}
-                    items={[
-                      'record_format',
-                      'field_patterns',
-                      'metadata',
-                      'definition_path',
-                      'return_json',
-                      'return_das_record',
-                      'metadata_interval',
-                      'quiet',
-                    ]}
-                    kwClass={'ParseTransform'}
-                  />
-                ) : (
-                  console.log(transform)
-                )}
-
-                {allTransforms.some((e) => e.class === 'PrefixTransform') &&
-                transform === 'Prefix Transform' ? (
-                  <KWArgs
-                    kwargCallback={transformKwargCallback}
-                    items={['prefix', 'sep']}
-                    kwClass={'PrefixTransform'}
-                  />
-                ) : (
-                  console.log(transform)
-                )}
-
-                {allTransforms.some((e) => e.class === 'QCFilterTransform') &&
-                transform === 'QC Filter Transform' ? (
-                  <KWArgs
-                    kwargCallback={transformKwargCallback}
-                    items={['bounds', 'message']}
-                    kwClass={'QCFilterTransform'}
-                  />
-                ) : (
-                  console.log(transform)
-                )}
-
-                {allTransforms.some(
-                  (e) => e.class === 'RegexFilterTransform'
-                ) && transform === 'Regex Filter Transform' ? (
-                  <KWArgs
-                    kwargCallback={transformKwargCallback}
-                    items={['pattern', 'flags', 'negate']}
-                    kwClass={'RegexFilterTransform'}
-                  />
-                ) : (
-                  console.log(transform)
-                )}
-
-                {allTransforms.some(
-                  (e) => e.class === 'SelectFieldsTransform'
-                ) && transform === 'Select Fields Transform' ? (
-                  <KWArgs
-                    kwargCallback={transformKwargCallback}
-                    items={['keep', 'delete']}
-                    kwClass={'SelectFieldsTransform'}
-                  />
-                ) : (
-                  console.log(transform)
-                )}
-
-                {allTransforms.some((e) => e.class === 'SliceTransform') &&
-                transform === 'Slice Transform' ? (
-                  <KWArgs
-                    kwargCallback={transformKwargCallback}
-                    items={['fields', 'sep']}
-                    kwClass={'SliceTransform'}
-                  />
-                ) : (
-                  console.log(transform)
-                )}
-
-                {allTransforms.some((e) => e.class === 'SubsampleTransform') &&
-                transform === 'Subsample Transform' ? (
-                  <KWArgs
-                    kwargCallback={transformKwargCallback}
-                    items={['field_spec', 'back_seconds', 'metadata_interval']}
-                    kwClass={'SubsampleTransform'}
-                  />
-                ) : (
-                  console.log(transform)
-                )}
-
-                {allTransforms.some((e) => e.class === 'TimestampTransform') &&
-                transform === 'Timestamp Transform' ? (
-                  <KWArgs
-                    kwargCallback={transformKwargCallback}
-                    items={['time_format', 'sep']}
-                    kwClass={'TimestampTransform'}
-                  />
-                ) : (
-                  console.log(transform)
-                )}
-
-                {allTransforms.some(
-                  (e) => e.class === 'ToDASRecordTransform'
-                ) && transform === 'ToDASRecord Transform' ? (
-                  <KWArgs
-                    kwargCallback={transformKwargCallback}
-                    items={['data_id', 'field_name']}
-                    kwClass={'ToDASRecordTransform'}
-                  />
-                ) : (
-                  console.log(transform)
-                )}
-
-                {allTransforms.some((e) => e.class === 'ToJSONTransform') &&
-                transform === 'ToJSON Transform' ? (
-                  <KWArgs
-                    kwargCallback={transformKwargCallback}
-                    items={['pretty']}
-                    kwClass={'ToJSONTransform'}
-                  />
-                ) : (
-                  console.log(transform)
-                )}
-
-                {allTransforms.some((e) => e.class === 'TrueWindsTransform') &&
-                transform === 'True Winds Transform' ? (
-                  <KWArgs
-                    kwargCallback={transformKwargCallback}
-                    items={[
-                      'course_field',
-                      'speed_field',
-                      'heading_field',
-                      'wind_dir_field',
-                      'wind_speed_field',
-                      'true_dir_name',
-                      'true_speed_name',
-                      'apparent_dir_name',
-                      'update_on_fields',
-                      'zero_line_reference',
-                      'convert_wind_factor',
-                      'convert_speed_factor',
-                      'metadata_interval',
-                    ]}
-                    kwClass={'TrueWindsTransform'}
-                  />
-                ) : (
-                  console.log(transform)
-                )}
-
-                {allTransforms.some(
-                  (e) => e.class === 'XMLAggregatorTransform'
-                ) && transform === 'XMLAggregator Transform' ? (
-                  <KWArgs
-                    kwargCallback={transformKwargCallback}
-                    items={['input_format', 'output_format']}
-                    kwClass={'XMLAggregatorTransform'}
-                  />
-                ) : (
-                  console.log(transform)
-                )}
-
+                {/* ─── Writers Section ──────────────────────────────── */}
                 <h1 style={divStyle}>Writers</h1>
                 <div className='form-group' style={divStyle}>
-                  <Dropdown>
-                    <Dropdown.Toggle variant='success' id='dropdown-basic'>
-                      {writer.length > 0 ? writer : 'Please Select a Writer'}
-                    </Dropdown.Toggle>
-
-                    <Dropdown.Menu>
-                      <Dropdown.Item href='#/action-1' onClick={writerChange}>
-                        Cached Data Writer
-                      </Dropdown.Item>
-                      <Dropdown.Item href='#/action-2' onClick={writerChange}>
-                        Composed Writer
-                      </Dropdown.Item>
-                      <Dropdown.Item href='#/action-3' onClick={writerChange}>
-                        Database Writer
-                      </Dropdown.Item>
-                      <Dropdown.Item href='#/action-4' onClick={writerChange}>
-                        Email Writer
-                      </Dropdown.Item>
-                      <Dropdown.Item href='#/action-5' onClick={writerChange}>
-                        Influxdb Writer
-                      </Dropdown.Item>
-                      <Dropdown.Item href='#/action-6' onClick={writerChange}>
-                        Logfile Writer
-                      </Dropdown.Item>
-                      <Dropdown.Item href='#/action-7' onClick={writerChange}>
-                        Network Writer
-                      </Dropdown.Item>
-                      <Dropdown.Item href='#/action-8' onClick={writerChange}>
-                        Record Screen Writer
-                      </Dropdown.Item>
-                      <Dropdown.Item href='#/action-9' onClick={writerChange}>
-                        Redis Writer
-                      </Dropdown.Item>
-                      <Dropdown.Item href='#/action-10' onClick={writerChange}>
-                        Text File Writer
-                      </Dropdown.Item>
-                      <Dropdown.Item href='#/action-11' onClick={writerChange}>
-                        Timeout Writer
-                      </Dropdown.Item>
-                      <Dropdown.Item href='#/action-12' onClick={writerChange}>
-                        UDP Writer
-                      </Dropdown.Item>
-                    </Dropdown.Menu>
-                  </Dropdown>
+                  {renderDropdown(writers, writer, writerChange, 'Please Select a Writer')}
                   <Button
                     className='addButton'
                     variant='outline-primary'
@@ -689,151 +208,12 @@ function YAML() {
                     Add
                   </Button>{' '}
                 </div>
-
-                {allWriters.some((e) => e.class === 'CachedDataWriter') &&
-                writer === 'Cached Data Writer' ? (
-                  <KWArgs
-                    kwargCallback={writerKwargCallback}
-                    items={[
-                      'data_server',
-                      'start_server',
-                      'back_seconds',
-                      'cleanup_interval',
-                      'update_interval',
-                      'max_backup',
-                    ]}
-                    kwClass={'CachedDataWriter'}
-                  />
-                ) : (
-                  console.log(writer)
-                )}
-
-                {allWriters.some((e) => e.class === 'ComposedWriter') &&
-                writer === 'Composed Writer' ? (
-                  <KWArgs
-                    kwargCallback={writerKwargCallback}
-                    items={['transforms', 'writers', 'check_format']}
-                    kwClass={'ComposedWriter'}
-                  />
-                ) : (
-                  console.log(writer)
-                )}
-
-                {allWriters.some((e) => e.class === 'DatabaseWriter') &&
-                writer === 'Database Writer' ? (
-                  <KWArgs
-                    kwargCallback={writerKwargCallback}
-                    items={[
-                      'database',
-                      'host',
-                      'user',
-                      'password',
-                      'save_source',
-                    ]}
-                    kwClass={'DatabaseWriter'}
-                  />
-                ) : (
-                  console.log(writer)
-                )}
-
-                {allWriters.some((e) => e.class === 'EmailWriter') &&
-                writer === 'Email Writer' ? (
-                  <KWArgs
-                    kwargCallback={writerKwargCallback}
-                    items={['to', 'sender', 'subject', 'max_freq']}
-                    kwClass={'EmailWriter'}
-                  />
-                ) : (
-                  console.log(writer)
-                )}
-
-                {allWriters.some((e) => e.class === 'InfluxdbWriter') &&
-                writer === 'Influxdb Writer' ? (
-                  <KWArgs
-                    kwargCallback={writerKwargCallback}
-                    items={['bucket_name']}
-                    kwClass={'InfluxdbWriter'}
-                  />
-                ) : (
-                  console.log(writer)
-                )}
-
-                {allWriters.some((e) => e.class === 'LogfileWriter') &&
-                writer === 'Logfile Writer' ? (
-                  <KWArgs
-                    kwargCallback={writerKwargCallback}
-                    items={[
-                      'filebase',
-                      'flush',
-                      'time_format',
-                      'date_format',
-                      'suffix',
-                      'rollover_hourly',
-                    ]}
-                    kwClass={'LogfileWriter'}
-                  />
-                ) : (
-                  console.log(writer)
-                )}
-                {allWriters.some((e) => e.class === 'NetworkWriter') &&
-                writer === 'Network Writer' ? (
-                  <KWArgs
-                    kwargCallback={writerKwargCallback}
-                    items={['network', 'num_retry', 'eol']}
-                    kwClass={'NetworkWriter'}
-                  />
-                ) : (
-                  console.log(writer)
-                )}
-
-                {allWriters.some((e) => e.class === 'TimeoutWriter') &&
-                writer === 'Timeout Writer' ? (
-                  <KWArgs
-                    kwargCallback={writerKwargCallback}
-                    items={[
-                      'writer',
-                      'timeout',
-                      'message',
-                      'resume_message',
-                      'empty_is_okay',
-                      'none_is_okay',
-                    ]}
-                    kwClass={'TimeoutWriter'}
-                  />
-                ) : (
-                  console.log(writer)
-                )}
-
-                {allWriters.some((e) => e.class === 'UDPWriter') &&
-                writer === 'UDP Writer' ? (
-                  <KWArgs
-                    kwargCallback={writerKwargCallback}
-                    items={[
-                      'port',
-                      'destination',
-                      'interface',
-                      'ttl',
-                      'num_retry',
-                      'eol',
-                    ]}
-                    kwClass={'UDPWriter'}
-                  />
-                ) : (
-                  console.log(writer)
-                )}
-
-                {allWriters.some((e) => e.class === 'RedisWriter') &&
-                writer === 'Redis Writer' ? (
-                  <KWArgs
-                    kwargCallback={writerKwargCallback}
-                    items={['channel', 'password']}
-                    kwClass={'RedisWriter'}
-                  />
-                ) : (
-                  console.log(writer)
+                {renderKwargsPanel(
+                  writers, allWriters, writer, writerKwargCallback, allWriterKwargs,
                 )}
               </div>
 
+              {/* ─── Output Preview ─────────────────────────────────── */}
               <div className='col-sm'>
                 <JSONYAMLOutput
                   readers={allReaders}
