@@ -1,4 +1,5 @@
 {% extends 'django_gui/base.html' %}
+{% load static %}
 
 {% block content %}
 
@@ -8,8 +9,8 @@
   var WEBSOCKET_SERVER = '{{ websocket_server }}';
   var FIELD_LIST = '{{ field_list_string }}'.split(',');
 </script>
-<script src="/static/django_gui/widget.html.js"></script>
-<script src="/static/django_gui/websocket.js"></script>
+<script src="{% static 'django_gui/widget.html.js' %}"></script>
+<script src="{% static 'django_gui/websocket.js' %}"></script>
 
 <title>Widget</title>
 <h1>Widget</h1>

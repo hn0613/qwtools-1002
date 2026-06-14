@@ -452,13 +452,6 @@ var server_timeout_timer = setInterval(flag_server_timeout,
 var manually_selected_mode = null;
 
 ///////////////////////////////
-function message_window() {
-  var path = '/server_messages/20/';
-  window.open(path, '_blank',
-  'height=350,width=540,toolbar=no,location=no,directories=no,status=no,menubar=no,scrollbars=yes,copyhistory=no');
-}
-
-///////////////////////////////
 // When user clicks a logger config button.
 function open_change_mode(click_event) {
   if (!click_event) click_event = window.event;
@@ -472,7 +465,7 @@ function open_change_mode(click_event) {
     'scrollbars=yes',
     'status=no'
   ];
-  window.open('../change_mode/', '_blank', window_args.join());
+  window.open('/change_mode/', '_blank', window_args.join());
 }
 
 ///////////////////////////////
@@ -489,7 +482,7 @@ function open_edit_config(click_event, logger_name) {
     'scrollbars=yes',
     'status=no'
   ];
-  window.open('../edit_config/' + logger_name, '_blank', window_args.join());
+  window.open('/edit_config/' + logger_name, '_blank', window_args.join());
 }
 
 ///////////////////////////////
@@ -506,5 +499,5 @@ function open_load_definition(click_event) {
     'scrollbars=yes',
     'status=no'
   ];
-  window.open('../choose_file/', '_blank', window_args.join());
+  window.open('/choose_file/', '_blank', window_args.join());
 }

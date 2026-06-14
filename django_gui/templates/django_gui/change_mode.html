@@ -17,9 +17,9 @@
 
   var global_active_mode = "{{ active_mode }}";
 </script>
-<script src="../static/django_gui/change_mode.html.js"></script>
-<script src="../static/django_gui/stderr_log_utils.js"></script>
-<script src="../static/django_gui/websocket.js"></script>
+<script src="{% static 'django_gui/change_mode.html.js' %}"></script>
+<script src="{% static 'django_gui/stderr_log_utils.js' %}"></script>
+<script src="{% static 'django_gui/websocket.js' %}"></script>
 
 <title>Logging Mode Manager</title>
 <h1>Logging Mode Manager</h1>

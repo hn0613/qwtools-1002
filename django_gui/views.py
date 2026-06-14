@@ -12,6 +12,7 @@ from yaml.scanner import ScannerError
 
 from django.shortcuts import render, redirect
 from django.http import HttpResponse
+from django.template import TemplateDoesNotExist
 
 
 # Read in JSON with comments
@@ -374,4 +375,12 @@ def fields(request):
     }
 
     # Render what we've ended up with
-    return render(request, 'django_gui/fields.html', template_vars)
+    try:
+        return render(request, 'django_gui/fields.html', template_vars)
+    except TemplateDoesNotExist:
+        return HttpResponse(
+            '<html><body><h1>Fields page not available</h1>'
+            '<p>The fields template has not been configured. '
+            '<a href="/">Return to dashboard</a></p></body></html>',
+            status=404
+        )
