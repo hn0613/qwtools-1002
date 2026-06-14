@@ -1,14 +1,13 @@
 import React from 'react';
 import './App.css';
-import Menu from './components/Menu';
+import ConfigBuilder from './components/ConfigBuilder';
 import './components/index.css';
 
-// Main component that brings subcomponents
 function App() {
   return (
     <div className='App'>
       <h1 className='test'>YAML/JSON Creator</h1>
-      <Menu></Menu>
+      <ConfigBuilder />
     </div>
   );
 }
