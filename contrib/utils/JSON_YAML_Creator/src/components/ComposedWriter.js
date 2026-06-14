@@ -1,10 +1,17 @@
 import React, { useState } from 'react';
 import { Dropdown, Button } from 'react-bootstrap';
+import { WRITERS } from '../componentRegistry';
 
-//Composed Writer requires a component on its own because it requires an option to add writers inside a writer
+// Build the list of writers available inside a ComposedWriter (exclude itself).
+const subWriters = WRITERS
+  .filter((w) => w.className !== 'ComposedWriter')
+  .map((w) => w.displayName);
+
+// Composed Writer requires a component on its own because it requires an
+// option to add writers inside a writer.
 export default function ComposedWriter(props) {
   const [kwargs, setKwargs] = useState('');
-  //for transform and checkformat
+  // for transform and check_format
   const [value, setValue] = useState('');
 
   const [extraWriter, setExtraWriter] = useState('');
@@ -24,19 +31,6 @@ export default function ComposedWriter(props) {
   const handleTextChange = (e) => {
     setValue(e.target.value);
   };
-  const writers = [
-    'Cached Data Writer',
-    'Database Writer',
-    'Email Writer',
-    'Influxdb Writer',
-    'Logfile Writer',
-    'Network Writer',
-    'Record Screen Writer',
-    'Redis Writer',
-    'Text File Writer',
-    'Timeout Writer',
-    'UDP Writer',
-  ];
 
   return (
     <div>
@@ -45,25 +39,23 @@ export default function ComposedWriter(props) {
         <div className='row' id='reader' style={divStyle}>
           <Dropdown>
             <Dropdown.Toggle variant='success' id='dropdown-basic'>
-              {kwargs.length > 0 ? kwargs : 'Please Select a Reader'}
+              {kwargs.length > 0 ? kwargs : 'Please Select a Kwarg'}
             </Dropdown.Toggle>
 
             <Dropdown.Menu>
               {props.items.map((item) => (
-                <Dropdown.Item onClick={kwargsChange}>{item}</Dropdown.Item>
+                <Dropdown.Item key={item} onClick={kwargsChange}>{item}</Dropdown.Item>
               ))}
             </Dropdown.Menu>
           </Dropdown>
           <div>
-            {kwargs === 'transforms' || kwargs === 'check_format' ? (
+            {kwargs === 'transforms' ? (
               <input
                 type='text'
                 placeholder='Value'
                 onChange={handleTextChange}
               />
-            ) : (
-              console.log('Here')
-            )}
+            ) : null}
 
             {kwargs !== 'writers' ? (
               <Button
@@ -76,9 +68,7 @@ export default function ComposedWriter(props) {
               >
                 Add
               </Button>
-            ) : (
-              console.log(kwargs)
-            )}
+            ) : null}
           </div>
           <div className='col-xl'>
             {kwargs === 'writers' ? (
@@ -91,8 +81,8 @@ export default function ComposedWriter(props) {
                   </Dropdown.Toggle>
 
                   <Dropdown.Menu>
-                    {writers.map((item) => (
-                      <Dropdown.Item onClick={extraWriterChange}>
+                    {subWriters.map((item) => (
+                      <Dropdown.Item key={item} onClick={extraWriterChange}>
                         {item}
                       </Dropdown.Item>
                     ))}
@@ -109,9 +99,7 @@ export default function ComposedWriter(props) {
                   Add
                 </Button>{' '}
               </div>
-            ) : (
-              console.log('Here')
-            )}
+            ) : null}
           </div>
         </div>
       </div>
