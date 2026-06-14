@@ -5,213 +5,93 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Data Server Fields</title>
     <style type="text/css">
-      .ship_table {
+      /* ---- Page-level reset and base ---- */
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
         font-family: "Trebuchet MS", Arial, Helvetica, sans-serif;
-        border-collapse: collapse;
-        background-color: lightslategray;
+        background: #1a2634;
+        color: #ecf0f1;
+        min-height: 100vh;
       }
-      .ship_table td {
-        border: 1px solid #ddd;
-        text-align: left;
-        padding: 8px;
+
+      /* ---- No-JS fallback banner ---- */
+      .rvdas-noscript {
+        padding: 16px; text-align: center;
+        background: #c0392b; color: #fff; font-size: 15px;
       }
-      .ship_table th {
-        border: 1px solid #ddd;
-        text-align: left;
-        padding: 8px;
-        background-color: lightslategray;
+
+      /* ---- Page toolbar (search + group button + count) ---- */
+      .rvdas-page-toolbar {
+        display: flex; align-items: center; gap: 12px;
+        padding: 10px 16px;
+        background: #34495e; border-bottom: 1px solid #4a6278;
       }
-      .name_td {
-        font-family: "Trebuchet MS", Arial, Helvetica, sans-serif;
-        text-align: left;
-        font-weight: bold;
+      .rvdas-page-toolbar .rvdas-search-input {
+        flex: 1; min-width: 200px; padding: 7px 12px;
+        font-size: 14px; border: 1px solid #5a7a94;
+        border-radius: 4px; background: #2c3e50; color: #ecf0f1;
+        outline: none;
       }
-      .val_td {
-        font-family: "Trebuchet MS", Arial, Helvetica, sans-serif;
-        text-align: left;
+      .rvdas-page-toolbar .rvdas-search-input:focus {
+        border-color: #3498db;
+        box-shadow: 0 0 0 2px rgba(52,152,219,0.3);
       }
-      .h1_style {
-        font-family: "Trebuchet MS", Arial, Helvetica, sans-serif;
-        text-align: left;
+      .rvdas-page-toolbar .rvdas-search-input::placeholder { color: #7f8c8d; }
+      .rvdas-page-toolbar .rvdas-group-btn {
+        padding: 7px 14px; font-size: 13px; cursor: pointer;
+        border: 1px solid #5a7a94; border-radius: 4px;
+        background: #2c3e50; color: #bdc3c7; white-space: nowrap;
+        transition: background 0.15s, border-color 0.15s;
+      }
+      .rvdas-page-toolbar .rvdas-group-btn:hover { background: #3d566e; }
+      .rvdas-page-toolbar .rvdas-group-btn.rvdas-active {
+        background: #2980b9; color: #fff; border-color: #3498db;
+      }
+      .rvdas-page-toolbar .rvdas-field-count {
+        font-size: 13px; color: #95a5a6; white-space: nowrap;
       }
     </style>
   </head>
   <body>
-    <!-- This is where we define location of data server. -->
+    <!-- NoScript fallback -->
+    <noscript>
+      <div class="rvdas-noscript">
+        此页面需要 JavaScript 才能运行。请启用 JavaScript 或检查浏览器设置。
+      </div>
+    </noscript>
+
+    <!-- Settings must load first (defines WEBSOCKET_DATA_SERVER) -->
     <script src="../js/widgets/settings.js"></script>
 
+    <!-- jQuery (optional convenience, used by other pages in this project) -->
     <script src="../js/jquery/jquery-3.6.3.min.js"></script>
 
-    <h1 class='h1_style'>Data Server Fields</h1>
-    <table id='field_table' class='ship_table'>
-      <tbody id='field_table_body'>
-        <tr>
-          <th>Field Name</th>
-          <th>Description</th>
-          <th>Units</th>
-          <th>Device</th>
-          <th>Device Type</th>
-          <th>Device Type Field</th>
-        </tr>
-        <tr>
-          <td colspan=6>
-            No connection to data server - is it running?
-          </td>
-        </tr>
-      </tbody>
-    </table>
+    <!-- Reusable modules (order matters: no inter-module deps, but all before page script) -->
+    <script src="../js/widgets/connection_manager.js"></script>
+    <script src="../js/widgets/status_bar.js"></script>
+    <script src="../js/widgets/data_table.js"></script>
+
+    <!-- Status bar (connection state + last update time) -->
+    <div id="status-bar-container"></div>
+
+    <!-- Toolbar: search input + group toggle button -->
+    <div class="rvdas-page-toolbar">
+      <input type="text"
+             id="rvdas-search-input"
+             class="rvdas-search-input"
+             placeholder="搜索字段名、描述、设备…"
+             autocomplete="off"
+             spellcheck="false">
+      <button id="group-by-device-btn"
+              class="rvdas-group-btn"
+              type="button">按设备分组</button>
+      <span id="rvdas-field-count" class="rvdas-field-count"></span>
+    </div>
+
+    <!-- Data table container (DataTable module renders here) -->
+    <div id="field-table-container"></div>
+
+    <!-- Page-specific script (must be last) -->
+    <script src="../js/fields_page.js"></script>
   </body>
 </html>
-
-<script type="text/javascript">
-//////////////////////////////////////////////////////////////////////////////
-// Javascript behind and specific to the fields.html page.
-// Note that this also counts on variable WEBSOCKET_DATA_SERVER being set.
-
-///////////////////////////
-function initial_send_message() {
-  //return {'type':'describe', 'fields': fields};
-  console.log('Sending initial message');
-  return ;
-}
-
-///////////////////////////////////////////////////////////////
-function process_message(message_str) {
-  var message = JSON.parse(message_str);
-  //console.log('Got message_str: ' + message_str);
-
-  // Figure out what kind of message we got
-  var message_type = message.type;
-  var status = message.status;
-
-  if (message_type != 'describe') {
-    console.log('Got unknown message type: ' + message_type);
-    return
-  }
-  var data_dict = message.data;
-  if (data_dict == undefined) {
-    console.log('Got data message with no data?!?: ' + message_str);
-    return;
-  }
-
-  // Remove all existing rows
-  var table = document.getElementById('field_table');
-  while (table.rows.length > 1) {
-    table.deleteRow(1);
-  }
-
-  // Add new rows
-  var sorted_fields = Object.keys(data_dict);
-  sorted_fields.sort();
-  var table_body = document.getElementById('field_table_body');
-  for (var idx=0; idx < sorted_fields.length; idx++) {
-    var field_name = sorted_fields[idx];
-    var desc_fields = data_dict[field_name];
-
-    var tr = document.createElement('tr');
-    tr.setAttribute('id', field_name);
-
-    var name_td = document.createElement('td');
-    name_td.innerHTML = field_name;
-    name_td.className = 'val_td'
-    tr.appendChild(name_td);
-
-    var desc_td = document.createElement('td');
-    desc_td.innerHTML = desc_fields.description;
-    tr.appendChild(desc_td);
-
-    var units_td = document.createElement('td');
-    units_td.innerHTML = desc_fields.units;
-    tr.appendChild(units_td);
-    
-    var device_td = document.createElement('td');
-    device_td.innerHTML = desc_fields.device;
-    tr.appendChild(device_td);
-
-    var device_type_td = document.createElement('td');
-    device_type_td.innerHTML = desc_fields.device_type;
-    tr.appendChild(device_type_td);
-
-    var type_field_td = document.createElement('td');
-    type_field_td.innerHTML = desc_fields.device_type_field;
-    tr.appendChild(type_field_td);
-
-    table_body.appendChild(tr);
-  }
-
-  // If there aren't any rows, add a note that we're not getting any
-  // metadata from the server.
-  if (table.rows.length == 1) {
-    var td = document.createElement('td');
-    td.innerHTML = 'No metadata received from data server; are loggers running and configured to send metadata?';
-    td.colSpan = 6
-
-    var tr = document.createElement('tr');
-    tr.setAttribute('id', field_name);
-    tr.appendChild(td);
-    table_body.appendChild(tr);
-  }
-}
-
-//////////////////////////////////////////////////////////////
-var websocket_server = WEBSOCKET_DATA_SERVER;
-
-if (! "WebSocket" in window) {
-  alert("Warning: websockets not supported by your Browser!");
-}
-
-// Set timer to retry websocket connection if it closes. Interval is
-// turned off in ws.onopen() if/when we succeed.
-var retry_interval = 3000;
-var retry_websocket_connection;
-var ws;
-
-var request_fields = {'type':'describe'};
-var resend_interval = 3000;
-
-// Try connecting right off the bat
-connect_websocket();
-
-//////////////////////////////////////////////////////
-function connect_websocket() {
-  console.log("Trying to connect to websocket at " + websocket_server);
-  ws = new WebSocket(websocket_server);
-  
-  ws.onopen = function() {
-    // We've succeeded in opening - don't try anymore
-    console.log("Connected - clearing retry interval");
-    clearTimeout(retry_websocket_connection);
-
-    // Send our first message to get things going.
-    send(request_fields);
-  }
-  ws.onclose = function() { 
-    // websocket is closed.
-    console.log("Connection is closed...");
-
-    // Set up an alarm to sleep, then try re-opening websocket
-    console.log("Setting timer to reconnect");
-    retry_websocket_connection = setTimeout(connect_websocket,
-                                            retry_interval);
-  };
-
-  ws.onmessage = function (received_message) { 
-    //console.log("Got status update message: " + received_message.data);
-    process_message(received_message.data);
-
-    // Sleep a little, then send another 'describe' message
-    setTimeout(send, 3000, request_fields);
-
-  };
-};
-
-window.onbeforeunload = function(event) {
-  console.log("Closing websocket");
-  ws.close();
-};
-
-function send(message) {
-  //console.log("Sending message '" + JSON.stringify(message) + "'");
-  ws.send(JSON.stringify(message));
-};
-</script>
