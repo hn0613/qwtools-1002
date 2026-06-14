@@ -1,0 +1,113 @@
+{% extends 'django_gui/base.html' %}
+{% load static %}
+
+{% block title %}Data Server Fields{% endblock %}
+
+{% block content %}
+
+<script type="text/javascript">
+  var WEBSOCKET_SERVER = '{{ websocket_server }}';
+</script>
+
+<title>Data Server Fields</title>
+<h1>Data Server Fields</h1>
+<table id='field_table' class='ship_table'>
+  <tbody id='field_table_body'>
+    <tr>
+      <th>Field Name</th>
+      <th>Description</th>
+      <th>Units</th>
+      <th>Device</th>
+      <th>Device Type</th>
+      <th>Device Type Field</th>
+    </tr>
+    <tr>
+      <td colspan=6>
+        No connection to data server - is it running?
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<script type="text/javascript">
+///////////////////////////
+function initial_send_message() {
+  return {'type':'describe'};
+}
+
+///////////////////////////////////////////////////////////////
+function process_message(message_str) {
+  var message = JSON.parse(message_str);
+
+  var message_type = message.type;
+  var status = message.status;
+
+  if (message_type != 'describe') {
+    console.log('Got unknown message type: ' + message_type);
+    return
+  }
+  var data_dict = message.data;
+  if (data_dict == undefined) {
+    console.log('Got data message with no data?!?: ' + message_str);
+    return;
+  }
+
+  // Remove all existing rows
+  var table = document.getElementById('field_table');
+  while (table.rows.length > 1) {
+    table.deleteRow(1);
+  }
+
+  // Add new rows
+  var sorted_fields = Object.keys(data_dict);
+  sorted_fields.sort();
+  var table_body = document.getElementById('field_table_body');
+  for (var idx=0; idx < sorted_fields.length; idx++) {
+    var field_name = sorted_fields[idx];
+    var desc_fields = data_dict[field_name];
+
+    var tr = document.createElement('tr');
+    tr.setAttribute('id', field_name);
+
+    var name_td = document.createElement('td');
+    name_td.innerHTML = field_name;
+    tr.appendChild(name_td);
+
+    var desc_td = document.createElement('td');
+    desc_td.innerHTML = desc_fields.description;
+    tr.appendChild(desc_td);
+
+    var units_td = document.createElement('td');
+    units_td.innerHTML = desc_fields.units;
+    tr.appendChild(units_td);
+
+    var device_td = document.createElement('td');
+    device_td.innerHTML = desc_fields.device;
+    tr.appendChild(device_td);
+
+    var device_type_td = document.createElement('td');
+    device_type_td.innerHTML = desc_fields.device_type;
+    tr.appendChild(device_type_td);
+
+    var type_field_td = document.createElement('td');
+    type_field_td.innerHTML = desc_fields.device_type_field;
+    tr.appendChild(type_field_td);
+
+    table_body.appendChild(tr);
+  }
+
+  // If there aren't any rows, add a note
+  if (table.rows.length == 1) {
+    var td = document.createElement('td');
+    td.innerHTML = 'No metadata received from data server; are loggers running and configured to send metadata?';
+    td.colSpan = 6;
+
+    var tr = document.createElement('tr');
+    tr.appendChild(td);
+    table_body.appendChild(tr);
+  }
+}
+</script>
+<script src="{% static 'django_gui/websocket.js' %}"></script>
+
+{% endblock content %}

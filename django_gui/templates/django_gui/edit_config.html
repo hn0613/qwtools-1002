@@ -16,9 +16,9 @@
   var CDS_DATA_ID = 'stderr:logger:' + LOGGER_ID;
   var CDS_TARGET_DIV = LOGGER_ID + '_stderr';
 </script>
-<script src="../static/django_gui/edit_config.html.js"></script>
-<script src="../static/django_gui/stderr_log_utils.js"></script>
-<script src="../static/django_gui/websocket.js"></script>
+<script src="{% static 'django_gui/edit_config.html.js' %}"></script>
+<script src="{% static 'django_gui/stderr_log_utils.js' %}"></script>
+<script src="{% static 'django_gui/websocket.js' %}"></script>
 
 <title>{{ logger_id }} Configuration</title>
 <h1>{{ logger_id }} Stderr</h1>
@@ -54,8 +54,8 @@
     </td>
   </tr>
 </table>
-<link rel="stylesheet" href="../static/django_gui/json-viewer/json-viewer.css">
-<script src="../static/django_gui/json-viewer/json-viewer.js"></script>
+<link rel="stylesheet" href="{% static 'django_gui/json-viewer/json-viewer.css' %}">
+<script src="{% static 'django_gui/json-viewer/json-viewer.js' %}"></script>
 
 <script>
 

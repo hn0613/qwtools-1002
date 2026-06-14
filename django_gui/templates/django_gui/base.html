@@ -1,14 +1,17 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <link rel="stylesheet" href="/static/django_gui/style.css">
-    <link rel="icon" href="/static/django_gui/favicon.ico" type="image/x-icon">
+    <link rel="stylesheet" href="{% static 'django_gui/style.css' %}">
+    <link rel="icon" href="{% static 'django_gui/favicon.ico' %}" type="image/x-icon">
+    {% block extra_head %}{% endblock %}
     <title>{% block title %}OpenRVDAS Cruise Management{% endblock %}</title>
   </head>
   <body>
     <div id="content">
       {% block content %}{% endblock %}
     </div>
+    {% block scripts %}{% endblock %}
     <footer>
       <a href="https://github.com/oceandatatools/openrvdas/blob/master/README.md" target="_blank">
         OpenRVDAS &copy;<script>document.write(new Date().getFullYear())</script> David Pablo Cohn
