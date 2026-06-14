@@ -5,213 +5,179 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Data Server Fields</title>
     <style type="text/css">
-      .ship_table {
-        font-family: "Trebuchet MS", Arial, Helvetica, sans-serif;
-        border-collapse: collapse;
-        background-color: lightslategray;
-      }
-      .ship_table td {
-        border: 1px solid #ddd;
-        text-align: left;
-        padding: 8px;
-      }
-      .ship_table th {
-        border: 1px solid #ddd;
-        text-align: left;
-        padding: 8px;
-        background-color: lightslategray;
-      }
-      .name_td {
-        font-family: "Trebuchet MS", Arial, Helvetica, sans-serif;
-        text-align: left;
-        font-weight: bold;
-      }
-      .val_td {
-        font-family: "Trebuchet MS", Arial, Helvetica, sans-serif;
-        text-align: left;
-      }
-      .h1_style {
-        font-family: "Trebuchet MS", Arial, Helvetica, sans-serif;
-        text-align: left;
-      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { background: #2c3e50; }
     </style>
   </head>
   <body>
-    <!-- This is where we define location of data server. -->
+    <!-- Status bar: connection state, last update, field count -->
+    <div id="status-bar"></div>
+
+    <!-- Toolbar: search input + group toggle -->
+    <div class="rvdas-toolbar">
+      <input id="rvdas-search-input" class="rvdas-search-input"
+             type="text" placeholder="搜索字段名、设备、描述...">
+      <button id="group-toggle-btn" class="rvdas-group-btn">按设备分组</button>
+    </div>
+
+    <!-- Data table container -->
+    <div id="field-table"></div>
+
+    <!-- Scripts: settings first, then jQuery, then reusable components -->
     <script src="../js/widgets/settings.js"></script>
-
     <script src="../js/jquery/jquery-3.6.3.min.js"></script>
+    <script src="../js/widgets/connection_manager.js"></script>
+    <script src="../js/widgets/status_bar.js"></script>
+    <script src="../js/widgets/data_table.js"></script>
 
-    <h1 class='h1_style'>Data Server Fields</h1>
-    <table id='field_table' class='ship_table'>
-      <tbody id='field_table_body'>
-        <tr>
-          <th>Field Name</th>
-          <th>Description</th>
-          <th>Units</th>
-          <th>Device</th>
-          <th>Device Type</th>
-          <th>Device Type Field</th>
-        </tr>
-        <tr>
-          <td colspan=6>
-            No connection to data server - is it running?
-          </td>
-        </tr>
-      </tbody>
-    </table>
+    <script type="text/javascript">
+    //////////////////////////////////////////////////////////////////////////
+    // Page-specific wiring for fields.html
+    // Connects ConnectionManager, StatusBar, and DataTable to display
+    // field metadata from the CachedDataServer via its 'describe' protocol.
+    //////////////////////////////////////////////////////////////////////////
+
+    // --- 1. StatusBar --------------------------------------------------
+    var status_bar = new StatusBar('status-bar', {
+      title: 'Data Server Fields',
+      stale_threshold: 10,
+      dead_threshold: 30
+    });
+
+    // --- 2. DataTable ---------------------------------------------------
+    var data_table = new DataTable('field-table', [
+      {key: 'field_name',        label: 'Field Name',        sortable: true},
+      {key: 'description',       label: 'Description',       sortable: true},
+      {key: 'units',             label: 'Units',             sortable: true},
+      {key: 'device',            label: 'Device',            sortable: true},
+      {key: 'device_type',       label: 'Device Type',       sortable: true},
+      {key: 'device_type_field', label: 'Device Type Field', sortable: true}
+    ], {
+      row_id_key: 'field_name',
+      groupable: true,
+      group_key: 'device',
+      on_filter_change: function(shown, total) {
+        status_bar.set_field_count(shown, total);
+      }
+    });
+
+    // Bind search input (element already in DOM above)
+    data_table.bind_search_input();
+
+    // --- 3. Group toggle button ----------------------------------------
+    var group_btn = document.getElementById('group-toggle-btn');
+    var grouping_active = false;
+    group_btn.addEventListener('click', function() {
+      grouping_active = !grouping_active;
+      data_table.set_grouping(grouping_active);
+      if (grouping_active) {
+        group_btn.classList.add('rvdas-active');
+      } else {
+        group_btn.classList.remove('rvdas-active');
+      }
+    });
+
+    // --- 4. Describe request scheduling --------------------------------
+    var describe_timer = null;
+    var DESCRIBE_INTERVAL = 3000;
+
+    function schedule_describe() {
+      clear_describe_timer();
+      describe_timer = setTimeout(function() {
+        conn.send({type: 'describe'});
+      }, DESCRIBE_INTERVAL);
+    }
+
+    function clear_describe_timer() {
+      if (describe_timer !== null) {
+        clearTimeout(describe_timer);
+        describe_timer = null;
+      }
+    }
+
+    // --- 5. Describe response → DataTable row array --------------------
+    function describe_to_rows(data_dict) {
+      var rows = [];
+      var field_names = Object.keys(data_dict);
+      for (var i = 0; i < field_names.length; i++) {
+        var name = field_names[i];
+        var meta = data_dict[name] || {};
+        rows.push({
+          field_name:        name,
+          description:       meta.description,
+          units:             meta.units,
+          device:            meta.device,
+          device_type:       meta.device_type,
+          device_type_field: meta.device_type_field
+        });
+      }
+      return rows;
+    }
+
+    // --- 6. ConnectionManager ------------------------------------------
+    var conn = new ConnectionManager(WEBSOCKET_DATA_SERVER, {
+      retry_interval: 3000,
+
+      on_state_change: function(state) {
+        status_bar.set_connection_state(state);
+      },
+
+      on_open: function() {
+        // First describe request as soon as connected
+        conn.send({type: 'describe'});
+      },
+
+      on_close: function() {
+        // Stop polling; table retains last data so the user can still read it
+        clear_describe_timer();
+      },
+
+      on_message: function(raw) {
+        var message;
+        try {
+          message = JSON.parse(raw);
+        } catch (e) {
+          console.warn('[fields] Failed to parse message: ' + e);
+          return;
+        }
+
+        if (message.type !== 'describe') {
+          console.log('[fields] Ignoring message type: ' + message.type);
+          schedule_describe();
+          return;
+        }
+
+        if (message.status !== 200) {
+          console.warn('[fields] Describe returned status ' + message.status +
+                       (message.error ? ': ' + message.error : ''));
+          schedule_describe();
+          return;
+        }
+
+        var data_dict = message.data;
+        if (!data_dict || typeof data_dict !== 'object') {
+          console.warn('[fields] Describe response has no data');
+          schedule_describe();
+          return;
+        }
+
+        var rows = describe_to_rows(data_dict);
+        data_table.set_data(rows);
+        status_bar.mark_updated();
+
+        // Schedule next poll
+        schedule_describe();
+      }
+    });
+
+    // --- 7. Start ------------------------------------------------------
+    conn.connect();
+
+    // --- 8. Cleanup on page unload -------------------------------------
+    window.onbeforeunload = function() {
+      clear_describe_timer();
+      conn.close();
+    };
+    </script>
   </body>
 </html>
-
-<script type="text/javascript">
-//////////////////////////////////////////////////////////////////////////////
-// Javascript behind and specific to the fields.html page.
-// Note that this also counts on variable WEBSOCKET_DATA_SERVER being set.
-
-///////////////////////////
-function initial_send_message() {
-  //return {'type':'describe', 'fields': fields};
-  console.log('Sending initial message');
-  return ;
-}
-
-///////////////////////////////////////////////////////////////
-function process_message(message_str) {
-  var message = JSON.parse(message_str);
-  //console.log('Got message_str: ' + message_str);
-
-  // Figure out what kind of message we got
-  var message_type = message.type;
-  var status = message.status;
-
-  if (message_type != 'describe') {
-    console.log('Got unknown message type: ' + message_type);
-    return
-  }
-  var data_dict = message.data;
-  if (data_dict == undefined) {
-    console.log('Got data message with no data?!?: ' + message_str);
-    return;
-  }
-
-  // Remove all existing rows
-  var table = document.getElementById('field_table');
-  while (table.rows.length > 1) {
-    table.deleteRow(1);
-  }
-
-  // Add new rows
-  var sorted_fields = Object.keys(data_dict);
-  sorted_fields.sort();
-  var table_body = document.getElementById('field_table_body');
-  for (var idx=0; idx < sorted_fields.length; idx++) {
-    var field_name = sorted_fields[idx];
-    var desc_fields = data_dict[field_name];
-
-    var tr = document.createElement('tr');
-    tr.setAttribute('id', field_name);
-
-    var name_td = document.createElement('td');
-    name_td.innerHTML = field_name;
-    name_td.className = 'val_td'
-    tr.appendChild(name_td);
-
-    var desc_td = document.createElement('td');
-    desc_td.innerHTML = desc_fields.description;
-    tr.appendChild(desc_td);
-
-    var units_td = document.createElement('td');
-    units_td.innerHTML = desc_fields.units;
-    tr.appendChild(units_td);
-    
-    var device_td = document.createElement('td');
-    device_td.innerHTML = desc_fields.device;
-    tr.appendChild(device_td);
-
-    var device_type_td = document.createElement('td');
-    device_type_td.innerHTML = desc_fields.device_type;
-    tr.appendChild(device_type_td);
-
-    var type_field_td = document.createElement('td');
-    type_field_td.innerHTML = desc_fields.device_type_field;
-    tr.appendChild(type_field_td);
-
-    table_body.appendChild(tr);
-  }
-
-  // If there aren't any rows, add a note that we're not getting any
-  // metadata from the server.
-  if (table.rows.length == 1) {
-    var td = document.createElement('td');
-    td.innerHTML = 'No metadata received from data server; are loggers running and configured to send metadata?';
-    td.colSpan = 6
-
-    var tr = document.createElement('tr');
-    tr.setAttribute('id', field_name);
-    tr.appendChild(td);
-    table_body.appendChild(tr);
-  }
-}
-
-//////////////////////////////////////////////////////////////
-var websocket_server = WEBSOCKET_DATA_SERVER;
-
-if (! "WebSocket" in window) {
-  alert("Warning: websockets not supported by your Browser!");
-}
-
-// Set timer to retry websocket connection if it closes. Interval is
-// turned off in ws.onopen() if/when we succeed.
-var retry_interval = 3000;
-var retry_websocket_connection;
-var ws;
-
-var request_fields = {'type':'describe'};
-var resend_interval = 3000;
-
-// Try connecting right off the bat
-connect_websocket();
-
-//////////////////////////////////////////////////////
-function connect_websocket() {
-  console.log("Trying to connect to websocket at " + websocket_server);
-  ws = new WebSocket(websocket_server);
-  
-  ws.onopen = function() {
-    // We've succeeded in opening - don't try anymore
-    console.log("Connected - clearing retry interval");
-    clearTimeout(retry_websocket_connection);
-
-    // Send our first message to get things going.
-    send(request_fields);
-  }
-  ws.onclose = function() { 
-    // websocket is closed.
-    console.log("Connection is closed...");
-
-    // Set up an alarm to sleep, then try re-opening websocket
-    console.log("Setting timer to reconnect");
-    retry_websocket_connection = setTimeout(connect_websocket,
-                                            retry_interval);
-  };
-
-  ws.onmessage = function (received_message) { 
-    //console.log("Got status update message: " + received_message.data);
-    process_message(received_message.data);
-
-    // Sleep a little, then send another 'describe' message
-    setTimeout(send, 3000, request_fields);
-
-  };
-};
-
-window.onbeforeunload = function(event) {
-  console.log("Closing websocket");
-  ws.close();
-};
-
-function send(message) {
-  //console.log("Sending message '" + JSON.stringify(message) + "'");
-  ws.send(JSON.stringify(message));
-};
-</script>
